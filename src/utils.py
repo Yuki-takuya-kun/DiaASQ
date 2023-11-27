@@ -31,6 +31,7 @@ class MyDataset(Dataset):
 
 class MyDataLoader:
     def __init__(self, cfg):
+        # get the dataset pair and init the preprocessor
         path = os.path.join(cfg.preprocessed_dir, '{}_{}.pkl'.format(cfg.lang, cfg.bert_path.replace('/', '-')))
         preprocessor = Preprocessor(cfg)
         

@@ -14,7 +14,7 @@ import torch.nn.functional as F
 class WordPair:
     def __init__(self, max_sequence_len=512):
         self.max_sequence_len = max_sequence_len
-
+        # 'O' denotes that the element is None
         self.entity_dic = {"O": 0, "ENT-T": 1, "ENT-A": 2, "ENT-O": 3}
 
         self.rel_dic = {"O": 0, "h2h": 1, "t2t": 2}

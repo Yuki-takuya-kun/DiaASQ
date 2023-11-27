@@ -85,8 +85,15 @@ class Preprocessor:
         return reply_mask.tolist(), speaker_mask.tolist(), thread_mask.tolist()
     
     def find_utterance_index(self, replies, sentence_lengths):
+        # in this program, it regard root dialogue as a independent thread
+        
+        
+        # i is the sentence index and w is the id of the replies
+        # if w == 0 means i is the index of the first reply of the root dialogue
         utterance_collections = [i for i, w in enumerate(replies) if w == 0]
+        # utterance_collections[0] must be the first thread, utterance_collections[1] is the next thread
         zero_index = utterance_collections[1]
+        # this iteration is going to rerange the index of the replies
         for i in range(len(replies)):
             if i < zero_index: continue
             if replies[i] == 0:
@@ -98,6 +105,8 @@ class Preprocessor:
         utterance_index = [[w] * z for w, z in zip(sentence_index, sentence_lengths)]
         utterance_index = [w for line in utterance_index for w in line]
 
+        # sentences[0] is the root of the dialogue
+        # distance is the distance to the root sentence
         token_index = [list(range(sentence_lengths[0]))]
         lens = len(token_index[0])
         for i, w in enumerate(sentence_lengths):
@@ -110,8 +119,10 @@ class Preprocessor:
 
         utterance_collections = np.split(sentence_index, utterance_collections)
 
+        # thread_nums is the sentence number of each thread
         thread_nums = list(map(len, utterance_collections))
         thread_ranges = [0] + list(accumulate(thread_nums))
+        # thread length is the length of each thread
         thread_lengths = [sum(sentence_lengths[thread_ranges[i]:thread_ranges[i+1]]) for i in range(len(thread_ranges)-1)]
 
         return utterance_index, token_index, thread_lengths, thread_nums
@@ -145,6 +156,7 @@ class Preprocessor:
         if not os.path.exists(path):
             raise FileNotFoundError('File {} not found! Please check your input and data path.'.format(path))
 
+        #get the dataset in the file
         content = json.load(open(path, 'r', encoding='utf-8'))
         res = []
         for line in tqdm(content, desc='Processing dialogues for {}'.format(mode)):
@@ -192,6 +204,7 @@ class Preprocessor:
         # align_index_with_list: align the index of the original elements according to the tokenization results
         new_sentences, pieces2words = self.align_index_with_list(sentences)
 
+        # the reverse of the word2pieces
         word2pieces = defaultdict(list) 
         for p, w in enumerate(pieces2words):
             word2pieces[w].append(p)
@@ -204,6 +217,8 @@ class Preprocessor:
         if mode != 'train':
             return dialogue
         targets, aspects, opinions = [dialogue[w] for w in ['targets', 'aspects', 'opinions']]
+        # x, y is the start and end index of the target, aspect or opinions, and the transfer_polarity function is going to get other opinion
+        # z is the words of target, aspect or opinion
         targets = [(word2pieces[x][0], word2pieces[y-1][-1] + 1, z) for x, y, z in targets]
         aspects = [(word2pieces[x][0], word2pieces[y-1][-1] + 1, z) for x, y, z in aspects]
         opinions = [(word2pieces[x][0], word2pieces[y-1][-1] + 1, z, self.transfer_polarity(w)) for x, y, z, w in opinions]
@@ -247,12 +262,19 @@ class Preprocessor:
         Args:
             sentences (_type_): List<str>
             e.g., xiao mi 12x is my favorite
+        Returns:
+            all_pieces: List<List<str>>, it contains the every sentence of token
+            pieces2word: it indicates the word index for every pieces
+            e.g., sentence is 'So I still bought 12X', pieces2word:[0,1,2,3,4,4]
+                    curline: ['so', 'i', 'still', 'bought', '12', '##x']
         """
         pieces2word = []
         word_num = 0
         all_pieces = []
         for sentence in sentences:
+            # get the sentence in the sentence list
             sentence = sentence.split()
+            # tokenize the word in sentence
             tokens = [self.tokenizer.tokenize(w) for w in sentence]
             cur_line = []
             for token in tokens:
@@ -417,12 +439,16 @@ class Preprocessor:
             doc_id = document['doc_id']
 
             # sentence_length = list(map(lambda x : len(x) + 2, sentences))
+            # sentence length is the length of each sentences plus 2
             sentence_length = list(map(lambda x : len(x) + 2, sentences))
 
             # token2sentid = [[i] * len(w) for i, w in enumerate(sentences)]
+            # i is the index of the sentence
             token2sentid = [[i] * len(w) for i, w in enumerate(sentences)]
+            # this is flattern
             token2sentid = [w for line in token2sentid for w in line]
 
+            # w is the id of the speaker, and len(z) use to match the length of the sentence
             token2speaker = [[11] + [w] * len(z) + [10] for w, z in zip(speakers, sentences)]
             token2speaker = [w for line in token2speaker for w in line]
 
@@ -437,6 +463,7 @@ class Preprocessor:
                         new2old[len(new2old)] = cur_len
                         cur_len += 1
 
+            #transfer sentences to tokens
             tokens = [[self.config.cls] + w + [self.config.sep] for w in sentences]
 
             # sentence_ids of each token (new token)
@@ -447,9 +474,11 @@ class Preprocessor:
             sentence_end = [i - 1 for i, w in enumerate(flatten_tokens) if w == self.config.sep]
             sentence_start = [i + 1 for i, w in enumerate(flatten_tokens) if w == self.config.cls]
 
+            # utterance span is the bound of every sentence
             utterance_spans = list(zip(sentence_start, sentence_end))
             utterance_index, token_index, thread_length, thread_nums = self.find_utterance_index(replies, sentence_length)
             reply_mask, speaker_masks, thread_masks = self.get_neighbor(utterance_spans, replies, sum(sentence_length), speakers, thread_nums)
+            
 
             input_ids = list(map(self.tokenizer.convert_tokens_to_ids, tokens))
             input_masks = [[1] * len(w) for w in input_ids]

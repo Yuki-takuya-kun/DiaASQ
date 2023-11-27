@@ -94,6 +94,7 @@ class BertWordPair(nn.Module):
                 cur_kw2 = cur_kw2.reshape(cur_kw.shape)
                 cur_kw = cur_kw * y_cos_pos + cur_kw2 * y_sin_pos
 
+                # matrix multiplication
                 pred_logits = torch.einsum('mhd,nhd->mnh', cur_qw, cur_kw).contiguous()
                 logits[rstart:rend, cstart:cend] = pred_logits
 
@@ -116,6 +117,7 @@ class BertWordPair(nn.Module):
         input_labels = kwargs[f"{mat_name}_matrix"]
         masks = kwargs['sentence_masks'] if mat_name == 'ent' else kwargs['full_masks']
 
+        # dense layer is tag-wise MLP
         dense_layer = self.dense_layers[mat_name]
 
         outputs = dense_layer(sequence_outputs)
@@ -155,33 +157,46 @@ class BertWordPair(nn.Module):
         sp = self.speaker_attention(sequence_outputs, sequence_outputs, sequence_outputs, speaker_masks)[0]
 
         r = torch.stack((rep, thr, sp), 0)
+        # max pooling
         r = torch.max(r, 0)[0]
         return r
     
     def merge_sentence(self, sequence_outputs, input_masks, dialogue_length):
         res = []
+        # ends is the list of end index of each dialogue
         ends = list(accumulate(dialogue_length))
+        # starts is the start index of each dialogue
         starts = [w - z for w, z in zip(ends, dialogue_length)]
+        # j is the index of each sentences
         for i, (s, e) in enumerate(zip(starts, ends)):
             stack = []
             for j in range(s, e):
+                # lens is the length of dialogue
                 lens = input_masks[j].sum()
                 stack.append(sequence_outputs[j, :lens])
             res.append(torch.cat(stack))
+        # len(res) is the number of the dialogue, max(map(len, res)) is to find the longest sentence length, and the sequence_outputs.shape[-1]
+        # is to find the dims of the sequence_outputs
         new_res = sequence_outputs.new_zeros([len(res), max(map(len, res)), sequence_outputs.shape[-1]])
         for i, w in enumerate(res):
             new_res[i, :len(w)] = w
         return new_res 
 
     def forward(self, **kwargs):
+    
         input_ids, input_masks, input_segments = [kwargs[w] for w in ['input_ids', 'input_masks', 'input_segments']]
         reply_masks, speaker_masks, thread_masks, dialogue_length = [kwargs[w] for w in ['reply_masks', 'speaker_masks', 'thread_masks', 'dialogue_length']]
 
+        # encode every utterance
+        
         sequence_outputs = self.bert(input_ids, token_type_ids=input_segments, attention_mask=input_masks)[0]
 
+        #set the <cls> to zero
+        #sequence_outputs[:, 0, :] = 0
+        
         sequence_outputs =  self.merge_sentence(sequence_outputs, input_masks, dialogue_length)
         sequence_outputs = self.dropout(sequence_outputs)
-
+        
         sequence_outputs = self.build_attention(sequence_outputs, reply_masks=reply_masks, speaker_masks=speaker_masks, thread_masks=thread_masks)
 
         loss0, tags0 = self.classify_matrix(kwargs, sequence_outputs, 'ent')

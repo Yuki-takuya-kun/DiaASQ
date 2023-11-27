@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-
-
 import os
 import yaml
 import argparse
@@ -12,7 +9,6 @@ import numpy as np
 from attrdict import AttrDict
 from torch.optim import AdamW
 import torch.nn as nn
-
 from transformers import get_linear_schedule_with_warmup
 
 from src.utils import MyDataLoader, RelationMetric 
@@ -21,12 +17,18 @@ from src.common import set_seed, ScoreManager, update_config
 from tqdm import tqdm
 from loguru import logger
 
+args = {
+    'lang':'zh',
+    'bert_lr': 1e-5,
+    'cuda_index': 0,
+    'seed':42
+}
 
 class Main:
     def __init__(self, args):
         config = AttrDict(yaml.load(open('src/config.yaml', 'r', encoding='utf-8'), Loader=yaml.FullLoader))
 
-        for k, v in vars(args).items():
+        for k, v in args.items():
             setattr(config, k, v)
         
         config = update_config(config)
@@ -119,25 +121,41 @@ class Main:
                                                          num_training_steps=self.config.epoch_size * self.trainLoader.__len__())
    
     def forward(self):
-        self.trainLoader, self.validLoader, self.testLoader, config = MyDataLoader(self.config).getdata()
-        self.model = BertWordPair(self.config).to(config.device)
-        self.score_manager = ScoreManager()
-        self.relation_metric = RelationMetric(self.config)
-        self.load_param()
-
-        logger.info("Start training...")
-        # self.best_iter = 7
-        self.train()
-        logger.info("Training finished..., best epoch is {}...".format(self.best_iter))
-        self.test()
-# 
-
+        from pprint import pprint
+        dataloader =  MyDataLoader(self.config)
+        for data in dataloader.data['train']:
+            doc_id, input_ids, input_masks, input_segments,sentence_length, token2sents, utterance_index, \
+            token_index, thread_length, token2speaker, reply_mask, speaker_mask, thread_mask, pieces2words, new2old, \
+                    triplets, pairs, entity_list, rel_list, polarity_list = data
+            print('doc_id:', doc_id)
+            print('input_ids:', input_ids)
+            print('input_masks:', input_masks)
+            print('input_segments:', input_segments)
+            print('sentence_length:', sentence_length)
+            print('token2sents:', token2sents)
+            print('utterance:', utterance_index)
+            print('token_idx:', token_index)
+            print('thread_length:', thread_length)
+            print('token2speaker:', token2speaker)
+            print('reply_mask:', reply_mask)
+            print('speaker_mask:', speaker_mask)
+            print('thread_mask:', thread_mask)
+            print('pieces2words:', pieces2words)
+            print('new2old:', new2old)
+            print('triplets:', triplets)
+            print('pairs:', pairs)
+            print('entity_lsit:', entity_list)
+            print('rel_list:', rel_list)
+            print('polarity_list:', polarity_list)
+            input()
+            
+        
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-l', '--lang', type=str, default='en', choices=['zh', 'en'], help='language selection')
-    parser.add_argument('-b', '--bert_lr', type=float, default=1e-5, help='learning rate for BERT layers')
-    parser.add_argument('-c', '--cuda_index', type=int, default=0, help='CUDA index')
-    parser.add_argument('-s', '--seed', type=int, default=42, help='random seed')
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('-l', '--lang', type=str, default='en', choices=['zh', 'en'], help='language selection')
+    # parser.add_argument('-b', '--bert_lr', type=float, default=1e-5, help='learning rate for BERT layers')
+    # parser.add_argument('-c', '--cuda_index', type=int, default=0, help='CUDA index')
+    # parser.add_argument('-s', '--seed', type=int, default=42, help='random seed')
+    # args = parser.parse_args()
     main = Main(args)
     main.forward()
